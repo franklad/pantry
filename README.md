@@ -1,6 +1,6 @@
 # pantry
 
-A kitchen inventory app. Tracks items across two states: **shopping** (want to buy) and **pantry** (have on hand). Second reference implementation of the [BYOA skilled-pod contract](https://github.com/franklad/byoa) — proves that BYOA apps work fine *without* a human UI, then evolves to add one.
+A kitchen inventory app. Tracks items across two states: **shopping** (want to buy) and **pantry** (have on hand). A reference implementation of the [BYOA skilled-pod contract](https://github.com/franklad/byoa).
 
 Live (tailnet-only): [pantry.machinecity.net](https://pantry.machinecity.net)
 
@@ -15,11 +15,11 @@ add_to_shopping ──► [shopping]  ──mark_purchased──►  [pantry] �
                        └── add_to_pantry (skip step) ───┘
 ```
 
-Both **the user** (via the web UI) and **agents** (via MCP) can mutate the same state. Same JSON file, same code, two principals.
+Both **the user** (via the web UI) and **agents** (via MCP) mutate the same state. Same JSON file, same code, two principals.
 
 ## What makes it interesting
 
-Built initially with **no UI at all** — agent-only — to prove BYOA apps are first-class without a frontend. Then evolved to add a small live UI with the same actions exposed to humans. **Same data, two principals.**
+**~300 lines of TypeScript** for a fully-functional dual-principal app — agent-callable via MCP and human-usable via the live web UI, with the same actions exposed to both. No database; single JSON file on a PVC. Demonstrates how small a BYOA app can be while still being first-class.
 
 The killer demo is cross-app composition with [gustus](https://github.com/franklad/gustus):
 
