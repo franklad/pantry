@@ -1,0 +1,131 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pantry
+  labels:
+    kubernetes.io/metadata.name: pantry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pantry-data
+  namespace: pantry
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pantry-secrets
+  namespace: pantry
+type: Opaque
+stringData:
+  MCP_BEARERS: REPLACED_AT_APPLY_TIME
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pantry
+  namespace: pantry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: pantry }
+  template:
+    metadata:
+      labels:
+        app: pantry
+        mcp-skill: "true"   # so Hermes can reach me via the label-driven egress rule
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: pantry
+          image: pantry:0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: PORT, value: "8080" }
+            - { name: HOST, value: "0.0.0.0" }
+            - { name: DATA_FILE, value: "/data/pantry.json" }
+            - { name: LOG_LEVEL, value: "info" }
+          envFrom:
+            - secretRef: { name: pantry-secrets }
+          ports:
+            - { name: http, containerPort: 8080 }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "20m",  memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: pantry-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pantry
+  namespace: pantry
+  labels:
+    mcp-skill: "true"
+spec:
+  selector: { app: pantry }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+# Default-deny + explicit ingress from hermes-ns (port 8080).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny, namespace: pantry }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pantry-allow-hermes
+  namespace: pantry
+spec:
+  podSelector:
+    matchLabels: { app: pantry }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: hermes }
+          podSelector:
+            matchLabels: { app: hermes }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pantry-allow-egress-dns
+  namespace: pantry
+spec:
+  podSelector:
+    matchLabels: { app: pantry }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
